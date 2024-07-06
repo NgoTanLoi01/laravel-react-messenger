@@ -28,7 +28,6 @@ return new class extends Migration
         Schema::create('conversations', function (Blueprint $table) {
             $table->foreignId('last_message_id')->nullable()->constrained('messages');
         });
-        
     }
 
     /**
