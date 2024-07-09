@@ -2,10 +2,10 @@
 
 namespace App\Models;
 
-// use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Foundation\Auth\User as Authenticatable;
 use Illuminate\Notifications\Notifiable;
+use Illuminate\Support\Facades\Auth;
 use Laravel\Sanctum\HasApiTokens;
 
 class User extends Authenticatable
@@ -46,8 +46,49 @@ class User extends Authenticatable
         'password' => 'hashed',
     ];
 
-    public function groups () 
+    public function groups()
     {
-        return $this ->belongsToMany(Group::class, 'group_users');
+        return $this->belongsToMany(Group::class, 'group_user');
+    }
+
+    public static function getUsersExceptUser(User $user)
+    {
+        $userId = $user->id;
+        $query = User::select(['users.*', 'messages.message as last_message', 'messages.created_at as last_message_date'])
+            ->where('users.id', '!=', $userId)
+            ->when(
+                $user->is_admin,
+                function ($query) {
+                    $query->whereNull('users.blocked_at');
+                }
+            )
+            ->leftJoin('conversations', function ($join) use ($userId) {
+                $join->on('conversations.user_id1', '=', 'users.id')
+                    ->where('conversations.user_id2', '=', $userId)
+                    ->orWhere(function ($query) use ($userId) {
+                        $query->on('conversations.user_id2', '=', 'users.id')
+                            ->where('conversations.user_id1', '=', $userId);
+                    });
+            })
+            ->leftJoin('messages', 'messages.id', '=', 'conversations.last_message_id')
+            ->orderByRaw('IFNULL(users.blocked_at, 1)')
+            ->orderBy('messages.created_at', 'desc')
+            ->orderBy('users.name');
+        return $query->get();
+    }
+
+    public function toConversationArray()
+    {
+        return [
+            'id' => $this->id,
+            'name' => $this->name,
+            'is_group' => false,
+            'is_admin' => (bool) $this->is_admin,
+            'created_at' => $this->created_at,
+            'updated_at' => $this->updated_at,
+            'blocked_at' => $this->blocked_at,
+            'last_message' => $this->last_message,
+            'last_message_date' => $this->last_message_date,
+        ];
     }
 }
